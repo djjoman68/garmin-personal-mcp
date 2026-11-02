@@ -142,9 +142,12 @@ describe("editDashboard", () => {
     await expect(
       writer.edit({ place: [{ board: "all", widget: "kpis", type: "paddle" }] }),
     ).rejects.toThrow(/paddle/);
-    await expect(
-      writer.edit({ place: [{ board: "all", widget: "kpis", type: "running" }] }),
-    ).resolves.toBeDefined();
+    const result = await writer.edit({
+      place: [{ board: "all", widget: "kpis", type: "running" }],
+    });
+    expect(result.changed).toBe(true);
+    const all = layout().boards.all as { widget: string; type?: string }[];
+    expect(all.at(-1)).toMatchObject({ widget: "kpis", type: "running" });
   });
 
   it("adds a language, and lists the texts it still misses", async () => {
@@ -243,6 +246,33 @@ describe("editDashboard", () => {
     writeFileSync(file, page().replace('content="3"', 'content="2"'));
     expect((await writer.write({})).page).toBe("upgraded");
     expect(readBlock(page(), "i18n")).toEqual({ de: { title: "Training + Erholung" } });
+  });
+
+  it("keeps the added languages when the page gets a new layout", async () => {
+    await writer.edit({ languages: { nl: { title: "Training en herstel" } } });
+    await writer.write({ layout: "blank" });
+    expect(readBlock(page(), "i18n")).toEqual({ nl: { title: "Training en herstel" } });
+  });
+
+  it("writes a new layout over a broken language block", async () => {
+    writeFileSync(
+      file,
+      page().replace(/garmin-i18n:start \*\/.*?\/\*/, "garmin-i18n:start */{oops/*"),
+    );
+    await writer.write({ layout: "preset" });
+    expect(readBlock(page(), "i18n")).toEqual({});
+  });
+
+  it("gives a new layout no languages from a page without a language block or not from the template", async () => {
+    writeFileSync(file, page().replace(/\n {2}i18n: .*\n/, "\n"));
+    expect(readBlock(page(), "i18n")).toBeUndefined();
+    await writer.write({ layout: "preset" });
+    expect(readBlock(page(), "i18n")).toEqual({});
+    const own =
+      '<script>/* garmin-data:start */null/* garmin-data:end */ /* garmin-i18n:start */{"nl":{"title":"x"}}/* garmin-i18n:end */</script>';
+    await writer.write({ page: own });
+    await writer.write({ layout: "preset" });
+    expect(readBlock(page(), "i18n")).toEqual({});
   });
 });
 
