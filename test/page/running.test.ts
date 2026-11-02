@@ -3,6 +3,7 @@ import {
   efficiency,
   paceSeconds,
   predictRaces,
+  racePredictionsOf,
   splitOf,
   workOf,
   workoutMetrics,
@@ -93,6 +94,28 @@ describe("pace split", () => {
 
   it("leaves out a lap without distance", () => {
     expect(splitOf([{ time: "5:00" }, lap(1, "5:00"), lap(1, "5:20")])?.first).toBe(300);
+  });
+
+  it("takes the distance of a lap from its time and pace, not the rounded km", () => {
+    // the watch rounds the first lap up to 1.01 km: time / pace gives 1 km, as for the second lap
+    const s = splitOf([
+      { km: 1.01, time: "5:00", pace: "5:00/km" },
+      { km: 1, time: "4:50", pace: "4:50/km" },
+    ]);
+    expect(s).toMatchObject({ first: 300, second: 290, kind: "negative" });
+    // a lap with a pace and no km counts; a lap with neither a pace nor km does not
+    const noKm = splitOf([{ time: "10:00", pace: "5:00/km" }, lap(2, "10:00"), { time: "9:00" }]);
+    expect(noKm).toEqual({ first: 300, second: 300, kind: "even" });
+  });
+
+  it("uses the rounded km of a lap without a pace", () => {
+    const s = splitOf([lap(1.01, "5:00"), lap(1, "5:00")]);
+    expect(s?.first).toBe(300 / 1.01);
+    expect(s?.kind).toBe("even");
+    // a lap with km and a pace of 0 also keeps its km
+    expect(splitOf([{ ...lap(1.01, "5:00"), pace: "0:00/km" }, lap(1, "5:00")])?.first).toBe(
+      300 / 1.01,
+    );
   });
 
   it("has no split without two laps of distance", () => {
@@ -336,5 +359,18 @@ describe("race predictor", () => {
 
   it("has no prediction from efforts under 5 km", () => {
     expect(predictRaces({ "1k": 200, mile: 330 })).toBeUndefined();
+  });
+
+  it("gives a prediction from each effort of 5 km or more, fastest first", () => {
+    const best = { "1k": 200, "5k": 1200, "10k": 2600, half: 5600 };
+    const all = racePredictionsOf(best);
+    // 10 km from 5k: 2502 s, from half: 2538 s, from 10k: 2600 s
+    expect(all.map((o) => o.from.distance)).toEqual(["5k", "half", "10k"]);
+    expect(all.map((o) => o.times["10k"])).toEqual(
+      all.map((o) => o.times["10k"]).toSorted((a, b) => a - b),
+    );
+    expect(predictRaces(best)).toEqual(all[0]);
+    expect(racePredictionsOf({})).toEqual([]);
+    expect(racePredictionsOf({ mile: 400 })).toEqual([]);
   });
 });
