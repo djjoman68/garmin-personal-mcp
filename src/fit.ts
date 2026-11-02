@@ -137,7 +137,7 @@ export function lapsOf(fit: Messages, activityId: number) {
     o.time = hms(lap.totalTimerTime ?? 0);
     if (speed != null && speed > 0) {
       if (foot) {
-        o.pace = `${hms(1000 / speed)}/km`;
+        o.pace = paceText(1000 / speed);
       } else {
         o.kmh = round(speed * 3.6, 1);
       }
@@ -174,7 +174,7 @@ export function lapsOf(fit: Messages, activityId: number) {
 }
 
 /** A pace as the lap pace: "m:ss/km". */
-const paceText = (sec: number) => `${hms(sec)}/km`;
+export const paceText = (sec: number) => `${hms(sec)}/km`;
 /** A percentage with 1 decimal; null when it applies but the data cannot give it. */
 const pctOrNull = (v: number | undefined) => (v === undefined ? null : round(v, 1));
 

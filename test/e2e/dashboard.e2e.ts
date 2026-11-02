@@ -4,6 +4,9 @@ import axe from "axe-core";
 import type { Browser, Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { THEMES } from "../../src/page/theme";
+import { digest } from "../../src/digest";
+import { en as enTexts } from "../../src/page/i18n/en";
+import { fitnessFatigueFrom, zonesOf } from "../../src/page/metrics";
 import { DASHBOARD_VERSION } from "../../src/prompts";
 import { data, launch, open, pageFile } from "./page";
 
@@ -41,6 +44,8 @@ const hash = (page: Page) => page.evaluate(() => location.hash);
 /** A copy of the object without the given fields. */
 const without = (o: object, fields: string[]) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => !fields.includes(k)));
+/** An activity without Garmin's load: the page estimates it from the HR. */
+const noGarminLoad = (a: object) => without(a, ["trainingLoad"]);
 /** The ISO time n hours from now. */
 const hours = (n: number) => new Date(Date.now() + n * 3_600_000).toISOString();
 /** Opens edit mode from the settings menu. */
@@ -138,6 +143,43 @@ const ratios = (page: Page) =>
       .map((k) => k.querySelector(".kpi-value")?.textContent),
   );
 
+/** The tiles of a widget: label → [value, sub text or null]. */
+const kpiTexts = (page: Page, widget: string) =>
+  page.$$eval(`[data-id=${widget}] .kpi`, (kpis) =>
+    Object.fromEntries(
+      kpis.map((k) => [
+        k.querySelector(".kpi-label")?.textContent,
+        [
+          k.querySelector(".kpi-value")?.textContent,
+          k.querySelector(".kpi-sub")?.textContent ?? null,
+        ],
+      ]),
+    ),
+  );
+
+/** The readiness tiles the page must show for the digest's readiness. */
+function readinessTiles(r: NonNullable<ReturnType<typeof digest>["readiness"]>) {
+  return {
+    "HRV status": [r.hrvStatus ?? "n/a", null],
+    "Sleep score": [r.sleepScore === null ? "n/a" : String(r.sleepScore), null],
+    "Resting HR": [
+      r.rhr === null ? "n/a" : `${r.rhr} bpm`,
+      r.rhrAvg7 === null ? null : `7 days before: ${r.rhrAvg7.toFixed(1)} bpm`,
+    ],
+    "Load ratio 7:28": [r.loadRatio === null ? "n/a" : r.loadRatio.toFixed(2), null],
+  };
+}
+
+/** A number as the page's fmt.num shows it in English: no decimals. */
+const whole = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
+
+/** The fitness, fatigue and form tiles for the last day of a fitnessFatigueFrom result. */
+const fitnessTiles = (ff: { fitness: number[]; fatigue: number[]; form: number[] }) => ({
+  "Fitness · 42 days": [whole.format(ff.fitness.at(-1)!), null],
+  "Fatigue · 7 days": [whole.format(ff.fatigue.at(-1)!), null],
+  Form: [whole.format(ff.form.at(-1)!), null],
+});
+
 /** The dataset labels of the bar charts in the tiles of `widget`. */
 const barLabels = (page: Page, widget: string) =>
   page.evaluate(
@@ -163,6 +205,21 @@ const chartDataset = (page: Page, widget: string, label: string) =>
     },
     [widget, label],
   );
+
+/** The value of the "Ascent" tile of the cycling board for the given activities. */
+async function cyclingAscent(activities: unknown[]): Promise<{ text: string | null; page: Page }> {
+  const { page, errors } = await open(
+    browser,
+    pageFile({ data: { ...data, v: DASHBOARD_VERSION, activities } }),
+    { hash: "#cycling" },
+  );
+  expect(errors).toEqual([]);
+  const text = await page
+    .locator("[data-id=typeKpis] .kpi", { has: page.locator(".kpi-label", { hasText: "Ascent" }) })
+    .locator(".kpi-value")
+    .textContent();
+  return { text, page };
+}
 
 describe("the page", () => {
   it("keeps the template small", () => {
@@ -1088,6 +1145,34 @@ describe("overview widgets", () => {
     expect(await page.$$eval("[data-id=readiness] .kpi", (k) => k.length)).toBe(4);
   });
 
+  it("shows the readiness inputs and verdict that the digest gives on the same data", async () => {
+    const r = digest({ ...data }).readiness!;
+    const { page, errors } = await open(browser, pageFile());
+    expect(await page.textContent(".verdict")).toBe(enTexts[`ready.${r.verdict!}`]);
+    // every input has a value on the fixture
+    expect(Object.values(r).every((v) => v !== null)).toBe(true);
+    expect(await kpiTexts(page, "readiness")).toEqual(readinessTiles(r));
+    expect(errors).toEqual([]);
+  });
+
+  it("shows n/a for the readiness inputs that the data does not have", async () => {
+    const noRecovery = { ...data, v: DASHBOARD_VERSION, recovery: [] };
+    let { page } = await open(browser, pageFile({ data: noRecovery }));
+    let r = digest(noRecovery).readiness!;
+    const lost = await kpiTexts(page, "readiness");
+    expect(lost["Sleep score"]).toEqual(["n/a", null]);
+    expect(lost["Resting HR"]).toEqual(["n/a", null]);
+    expect(lost["HRV status"]).toEqual([r.hrvStatus, null]);
+    expect(lost).toEqual(readinessTiles(r));
+    const noHrv = { ...data, v: DASHBOARD_VERSION, hrv: [] };
+    ({ page } = await open(browser, pageFile({ data: noHrv })));
+    r = digest(noHrv).readiness!;
+    const noHrvTiles = await kpiTexts(page, "readiness");
+    expect(noHrvTiles["HRV status"]).toEqual(["n/a", null]);
+    expect(noHrvTiles["Sleep score"]).toEqual([String(r.sleepScore), null]);
+    expect(noHrvTiles).toEqual(readinessTiles(r));
+  });
+
   it("shows the load ratio as n/a when the data does not cover its 28 days", async () => {
     const full = await open(browser, pageFile());
     const values = await ratios(full.page);
@@ -1354,6 +1439,30 @@ describe("type boards", () => {
     expect(errors).toEqual([]);
   });
 
+  it("shows n/a for the cycling ascent without ascent data, and keeps a real 0", async () => {
+    const base = without(
+      data.activities.find((a: Record<string, unknown>) => a.type === "cycling"),
+      ["ascentM"],
+    );
+    const ride = (n: number, start: string, ascentM?: number) => ({
+      ...base,
+      id: 900 + n,
+      start: `${start} 09:00:00`,
+      ...(ascentM === undefined ? {} : { ascentM }),
+    });
+    // week A: no ascent data; week B: a real 0 m; week C: 120 m and one ride without data
+    const weekA = [ride(1, "2026-10-06"), ride(2, "2026-10-08")];
+    const weekB = [ride(3, "2026-10-13", 0), ride(4, "2026-10-15", 0)];
+    const weekC = [ride(5, "2026-10-20", 120), ride(6, "2026-10-22")];
+    expect((await cyclingAscent(weekA)).text).toBe("n/a");
+    expect((await cyclingAscent(weekB)).text).toBe("0 m");
+    const all = await cyclingAscent([...weekA, ...weekB, ...weekC]);
+    expect(all.text).toBe("120 m");
+    // 13 weeks: no ride in the first 9 and the 13th; A is a gap, B a real 0, C the known 120
+    const bars = await chartDataset(all.page, "bikeDetails", "Weekly ascent");
+    expect(bars.data).toEqual([...Array.from({ length: 10 }, () => null), 0, 120, null]);
+  });
+
   it("names the training effects with the catalogue texts", async () => {
     // a label that the catalogues do not know keeps Garmin's words
     const unknown = {
@@ -1535,6 +1644,43 @@ describe("type boards", () => {
       }),
     ));
     expect(await page.$$eval("[data-id=fitnessFatigue] .empty", (e) => e.length)).toBe(1);
+  });
+
+  it("shows the fitness, fatigue and form of the window, with the HR estimate and the window end", async () => {
+    const maxHR = zonesOf(data.zones).maxHR;
+    const every = [...data.activities, ...data.previousActivities];
+    // the full window: the digest's values
+    const full = await open(browser, pageFile());
+    const ff = digest({ ...data }).fitnessFatigue!;
+    const shown = await kpiTexts(full.page, "fitnessFatigue");
+    expect(shown).toEqual({
+      "Fitness · 42 days": [whole.format(ff.fitness), null],
+      "Fatigue · 7 days": [whole.format(ff.fatigue), null],
+      Form: [whole.format(ff.form), null],
+    });
+    expect(shown.Form).not.toEqual(shown["Fatigue · 7 days"]);
+    // estimated loads only: the HR estimate needs the max HR of the zones
+    const estimated = {
+      ...data,
+      activities: data.activities.map(noGarminLoad),
+      previousActivities: data.previousActivities.map(noGarminLoad),
+      v: DASHBOARD_VERSION,
+    };
+    const est = await open(browser, pageFile({ data: estimated }));
+    const estFf = fitnessFatigueFrom(
+      [...estimated.activities, ...estimated.previousActivities],
+      data.start,
+      data.end,
+      maxHR,
+    )!;
+    expect(await kpiTexts(est.page, "fitnessFatigue")).toEqual(fitnessTiles(estFf));
+    // an older window ends on the Sunday of its last week, not at the end of the data
+    const old = await open(browser, pageFile(), { hash: "#all@2026-08-03_2026-08-31" });
+    const oldFf = fitnessFatigueFrom(every, "2026-08-03", "2026-09-06", maxHR)!;
+    const oldShown = await kpiTexts(old.page, "fitnessFatigue");
+    expect(oldShown).toEqual(fitnessTiles(oldFf));
+    expect(oldShown["Fitness · 42 days"]).not.toEqual(shown["Fitness · 42 days"]);
+    expect([...full.errors, ...est.errors, ...old.errors]).toEqual([]);
   });
 
   it("says how to compare workouts when no run name repeats", async () => {
@@ -2164,8 +2310,39 @@ describe("custom widgets and languages", () => {
           custom("bad", "this is not code ("),
           custom("text", "throw 'plain text';"),
           custom("thing", "throw { code: 1 };"),
+          custom("msg", "throw { message: 'no rows' };"),
+          custom("long", "throw { text: 'x'.repeat(300) };"),
+          custom("loop", "const o = { a: 1 }; o.self = o; throw o;"),
+          custom("deep", "const a = { b: { c: null } }; a.b.c = a; throw a;"),
+          custom("shared", "const s = { n: 1 }; throw { x: s, y: s };"),
+          custom("longLoop", "const o = {}; o.self = o; o.t = 'x'.repeat(120); throw o;"),
+          custom("big", "throw { n: 1n };"),
+          custom("nothing", "throw undefined;"),
+          custom("none", "throw null;"),
+          custom("num", "throw { message: 5 };"),
+          // {"t":"…"} is 8 characters plus the text: 100 in all fits, 101 is cut
+          custom("fits", "throw { t: 'x'.repeat(92) };"),
+          custom("over", "throw { t: 'x'.repeat(93) };"),
         ],
-        layout: on("broken", "bad", "text", "thing", "coachNotes"),
+        layout: on(
+          "broken",
+          "bad",
+          "text",
+          "thing",
+          "msg",
+          "long",
+          "loop",
+          "deep",
+          "shared",
+          "longLoop",
+          "big",
+          "nothing",
+          "none",
+          "num",
+          "fits",
+          "over",
+          "coachNotes",
+        ),
       }),
     );
     expect(await page.textContent("[data-id=broken] .error")).toBe(
@@ -2174,9 +2351,43 @@ describe("custom widgets and languages", () => {
     expect(await page.textContent("[data-id=bad] .error")).toContain("This widget failed");
     // a thrown value that is not an Error still fills the placeholder
     expect(await page.textContent("[data-id=text] .error")).toBe("This widget failed: plain text");
-    expect(await page.textContent("[data-id=thing] .error")).toBe(
+    // an object shows its message, else a short JSON text
+    expect(await page.textContent("[data-id=thing] .error")).toBe('This widget failed: {"code":1}');
+    expect(await page.textContent("[data-id=msg] .error")).toBe("This widget failed: no rows");
+    expect(await page.textContent("[data-id=num] .error")).toBe(
+      'This widget failed: {"message":5}',
+    );
+    const long = (await page.textContent("[data-id=long] .error")) ?? "";
+    expect(long).toMatch(/^This widget failed: \{"text":"x+…$/);
+    expect(long.length - "This widget failed: ".length).toBe(100);
+    expect(await page.textContent("[data-id=fits] .error")).toBe(
+      `This widget failed: {"t":"${"x".repeat(92)}"}`,
+    );
+    expect(await page.textContent("[data-id=over] .error")).toBe(
+      `This widget failed: {"t":"${"x".repeat(93)}…`,
+    );
+    // an object met again on its own path is a cycle; one shared by two keys is not
+    expect(await page.textContent("[data-id=loop] .error")).toBe(
+      'This widget failed: {"a":1,"self":"[Circular]"}',
+    );
+    expect(await page.textContent("[data-id=deep] .error")).toBe(
+      'This widget failed: {"b":{"c":"[Circular]"}}',
+    );
+    expect(await page.textContent("[data-id=shared] .error")).toBe(
+      'This widget failed: {"x":{"n":1},"y":{"n":1}}',
+    );
+    const loopStart = '{"self":"[Circular]","t":"';
+    expect(await page.textContent("[data-id=longLoop] .error")).toBe(
+      `This widget failed: ${loopStart}${"x".repeat(99 - loopStart.length)}…`,
+    );
+    // JSON cannot write a BigInt: String() is the fallback
+    expect(await page.textContent("[data-id=big] .error")).toBe(
       "This widget failed: [object Object]",
     );
+    expect(await page.textContent("[data-id=nothing] .error")).toBe(
+      "This widget failed: undefined",
+    );
+    expect(await page.textContent("[data-id=none] .error")).toBe("This widget failed: null");
     expect(await page.textContent("[data-id=coachNotes] .notes")).toContain("Load");
     expect(errors).toEqual([]);
   });
