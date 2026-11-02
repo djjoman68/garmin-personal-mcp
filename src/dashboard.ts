@@ -10,6 +10,7 @@ import { workoutOf } from "./page/running";
 import {
   type GarminTools,
   MODEL_ONLY,
+  SEARCH_PAGE,
   firstArray,
   sleepSummary,
   summarize,
@@ -31,7 +32,8 @@ export const weeksCovered = (weeks: number | undefined): number =>
   weeks == null ? DEFAULT_WEEKS : Math.min(Math.max(weeks, 1), MAX_WEEKS);
 /** The last days of a cached range are fetched again: Garmin can still add activities or finish a night's data. */
 const REFRESH_DAYS = 2;
-const PAGE = 200;
+/** Bump when summarize keeps a new field: cached rows from before it are fetched again, once. */
+const SUMMARY = 2;
 
 /** What one getDashboardData call counts. */
 interface Sync {
@@ -128,9 +130,10 @@ export class GarminDashboard {
 
   async #syncActivities(cache: Json, from: string, to: string, sync: Sync): Promise<void> {
     const byId = objectAt(cache, "activities");
-    // rows written before the sport field, or by another server: fetch the activities again.
+    // rows written before a summary field (SUMMARY) or the sport field, or by another server: fetch them again.
     // shortcut: a row that Garmin sends without sportTypeId repeats this on every call; mark rows if that happens
     if (
+      cache.activitiesSummary !== SUMMARY ||
       Object.values(byId).some((a) => isObject(a) && a.type !== undefined && a.sport === undefined)
     ) {
       for (const id of Object.keys(byId)) delete byId[id];
@@ -147,11 +150,11 @@ export class GarminDashboard {
           delete byId[id];
         }
       }
-      for (let page = 0; ; page += PAGE) {
+      for (let page = 0; ; page += SEARCH_PAGE) {
         sync.calls++;
         const json = await this.api.getJson("/activitylist-service/activities/search/activities", {
           start: String(page),
-          limit: String(PAGE),
+          limit: String(SEARCH_PAGE),
           startDate: rFrom,
           endDate: rTo,
         });
@@ -166,12 +169,13 @@ export class GarminDashboard {
           const activity = isObject(a) ? a : {};
           byId[asString(activity.activityId)] = summarize(activity);
         }
-        if (list.length < PAGE) {
+        if (list.length < SEARCH_PAGE) {
           break;
         }
       }
     }
     setCovered(cache, "activitiesFrom", "activitiesTo", covered(cachedFrom, cachedTo, from, to));
+    cache.activitiesSummary = SUMMARY;
   }
 
   async #syncHrv(cache: Json, from: string, to: string, sync: Sync): Promise<void> {

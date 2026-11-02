@@ -206,6 +206,9 @@ function fakeGarmin(path: string, q: Record<string, string>) {
       const day = String(a.startTimeLocal).slice(0, 10);
       return day >= q.startDate && day <= q.endDate;
     });
+    // as Garmin: a page of about 190 or more activities answers HTTP 500
+    if (rows.length - Number(q.start) >= 190 && Number(q.limit) >= 190)
+      throw new GarminApiError(`GET ${path} -> HTTP 500: too many`);
     return rows.slice(Number(q.start), Number(q.start) + Number(q.limit));
   }
   if (path.startsWith("/hrv-service/hrv/daily/")) {
@@ -411,6 +414,25 @@ describe("getDashboardData", () => {
     expect(Object.keys(readCache().activities)).toEqual(["1"]);
   });
 
+  it("fetches the activities again, once, when the cache is from before a new summary field", async () => {
+    garminActivities = [activity(1, "2026-10-20")];
+    await dashboard.getDashboardData(2);
+    const cache = readCache();
+    delete cache.activitiesSummary;
+    writeFileSync(cacheFile(), JSON.stringify(cache));
+    api.getJson.mockClear();
+
+    await dashboard.getDashboardData(2);
+    expect(callsTo("/activitylist").map(([, q]) => [q.startDate, q.endDate])).toEqual([
+      ["2026-09-21", "2026-10-26"],
+    ]);
+    api.getJson.mockClear();
+    await dashboard.getDashboardData(2);
+    expect(callsTo("/activitylist").map(([, q]) => [q.startDate, q.endDate])).toEqual([
+      ["2026-10-25", "2026-10-26"],
+    ]);
+  });
+
   it("drops a cached activity that Garmin no longer has in a refetched day", async () => {
     garminActivities = [activity(1, "2026-10-26"), activity(2, "2026-10-20")];
     await dashboard.getDashboardData(2);
@@ -420,10 +442,16 @@ describe("getDashboardData", () => {
     expect(Object.keys(readCache().activities)).toEqual(["2"]);
   });
 
-  it("reads the activity list in pages of 200", async () => {
+  it("reads the activity list in pages of 100", async () => {
     garminActivities = Array.from({ length: 450 }, (_, i) => activity(1000 + i, "2026-10-20"));
     const out = JSON.parse(await dashboard.getDashboardData(1));
-    expect(callsTo("/activitylist").map(([, q]) => q.start)).toEqual(["0", "200", "400"]);
+    expect(callsTo("/activitylist").map(([, q]) => q.start)).toEqual([
+      "0",
+      "100",
+      "200",
+      "300",
+      "400",
+    ]);
     expect(out.sync.cachedActivities).toBe(450);
   });
 

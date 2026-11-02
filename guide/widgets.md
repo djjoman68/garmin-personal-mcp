@@ -30,7 +30,7 @@ it by hand.
 | Best efforts | `bestEfforts` | The fastest 1 km, mile, 5 km, 10 km, half marathon and marathon in the window, and the pace of the fastest 5 km and 10 km of each week. | running | 1 |
 | Races | `races` | Each race with its time, pace, HR, power and aerobic training effect. | running | 2 |
 | Aerobic fitness | `aerobicFitness` | Pace against HR of each run (older runs paler), weekly pace, and the efficiency (metres per heartbeat) of the runs below Z4: each run, the weekly mean and the last weeks against the first. | running | 2 |
-| Easy and hard running | `intensityShare` | The share of running time in Z1-2 (easy) and Z4-5 (hard) each week. | running | 1 |
+| Easy and hard training | `intensityShare` | The share of time in Z1-2 (easy) and Z4-5 (hard) each week, of runs or rides. | running, cycling | 1 |
 | Running form | `runningForm` | Weekly cadence, ground contact, stride, vertical oscillation and ratio, and power, one small chart for each: cadence and ground contact first, the others under Show all. | running | 3 |
 | Run Walk Run | `runWalk` | Run Walk Run sessions: the pace of the run segments, the overall pace and the walk time. | running | 1 |
 | Training effect | `trainingEffect` | Aerobic and anaerobic training effect of each run, and the training effect labels of each week. | running | 2 |
@@ -43,8 +43,8 @@ it by hand.
 | Sessions | `strengthSessions` | Each strength session with its exercises and sets in order, the last 6 first, the others under Show all. | strengthTraining | 3 |
 | Pace and walks | `walkDetails` | Weekly pace and average HR, and steps, cadence and body battery change of each walk. | walking, hiking | 2 |
 | Daily steps | `steps` | Daily steps against the goal, and floors, for the last 14 days. | - | 1 |
-| Vertical speed | `hikeVertical` | Vertical metres per hour of each activity with ascent. | hiking, walking, running | 3 |
-| Rides | `bikeDetails` | Weekly speed and ascent, each ride, and indoor against outdoor time. | cycling | 3 |
+| Vertical speed | `hikeVertical` | Vertical metres per hour of moving time of each activity with ascent, with a note that the route moves the number. | hiking, walking, running, cycling | 3 |
+| Rides | `bikeDetails` | Weekly speed and ascent, each ride, and indoor against outdoor time; for mountain-bike rides, the grit and flow of each ride. | cycling | 3 |
 | Swims | `swimDetails` | Each swim with pace per 100 m, SWOLF, lengths, strokes and pool length. | swimming | 3 |
 | Sessions and intensity | `racketDetails` | Each racket session: sport, HR, time in Z3+, Z4-5 share, calories per hour, training effect, and its load against a run of the same length. | racket, generic | 3 |
 
@@ -60,7 +60,7 @@ every board. _Width_ is the default width in columns.
 | strengthTraining | `typeKpis`, `typeWeekly`, `hrZones`, `setsPerCategory`, `muscleBalance`, `exercises`, `strengthSessions` |
 | walking | `typeKpis`, `typeWeekly`, `hrZones`, `walkDetails`, `steps`, `activities` |
 | hiking | `typeKpis`, `typeWeekly`, `hrZones`, `hikeVertical`, `activities` |
-| cycling | `typeKpis`, `typeWeekly`, `hrZones`, `bikeDetails`, `activities` |
+| cycling | `typeKpis`, `typeWeekly`, `hrZones`, `bikeDetails`, `hikeVertical`, `intensityShare`, `activities` |
 | swimming | `typeKpis`, `typeWeekly`, `hrZones`, `swimDetails`, `activities` |
 | racket | `typeKpis`, `typeWeekly`, `hrZones`, `racketDetails`, `activities` |
 | generic | `typeKpis`, `typeWeekly`, `hrZones`, `activities` |

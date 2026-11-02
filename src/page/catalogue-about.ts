@@ -38,7 +38,7 @@ export const ABOUT: Record<string, string> = {
   races: "Each race with its time, pace, HR, power and aerobic training effect.",
   aerobicFitness:
     "Pace against HR of each run (older runs paler), weekly pace, and the efficiency (metres per heartbeat) of the runs below Z4: each run, the weekly mean and the last weeks against the first.",
-  intensityShare: "The share of running time in Z1-2 (easy) and Z4-5 (hard) each week.",
+  intensityShare: "The share of time in Z1-2 (easy) and Z4-5 (hard) each week, of runs or rides.",
   runningForm:
     "Weekly cadence, ground contact, stride, vertical oscillation and ratio, and power, one small chart for each: cadence and ground contact first, the others under Show all.",
   runWalk:
@@ -60,8 +60,10 @@ export const ABOUT: Record<string, string> = {
   walkDetails:
     "Weekly pace and average HR, and steps, cadence and body battery change of each walk.",
   steps: "Daily steps against the goal, and floors, for the last 14 days.",
-  hikeVertical: "Vertical metres per hour of each activity with ascent.",
-  bikeDetails: "Weekly speed and ascent, each ride, and indoor against outdoor time.",
+  hikeVertical:
+    "Vertical metres per hour of moving time of each activity with ascent, with a note that the route moves the number.",
+  bikeDetails:
+    "Weekly speed and ascent, each ride, and indoor against outdoor time; for mountain-bike rides, the grit and flow of each ride.",
   swimDetails: "Each swim with pace per 100 m, SWOLF, lengths, strokes and pool length.",
   racketDetails:
     "Each racket session: sport, HR, time in Z3+, Z4-5 share, calories per hour, training effect, and its load against a run of the same length.",
