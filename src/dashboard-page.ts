@@ -7,13 +7,21 @@ import * as z from "zod/v4";
 import { weeksCovered } from "./dashboard";
 import { type Digest, digest } from "./digest";
 import { Profile } from "@garmin/fitsdk";
-import { type Activity, GROUPS, groupOf } from "./page/calc";
+import { type Activity, GROUPS, groupOf, tabsFor } from "./page/calc";
 import { CATALOGUE, inPage } from "./page/catalogue";
 import { ABOUT } from "./page/catalogue-about";
 import { BUILT_IN } from "./page/i18n/built-in";
 import { type Catalogue, en } from "./page/i18n/en";
-import { add, boardOf, type Layout, parseLayout, type Span, withBoard } from "./page/layout";
-import { preset } from "./page/presets";
+import {
+  add,
+  boardOf,
+  type Layout,
+  parseLayout,
+  type Span,
+  withBoard,
+  withPresetWidgets,
+} from "./page/layout";
+import { baseline, preset } from "./page/presets";
 import { DATA_ITEMS, type Settings } from "./page/settings";
 import { THEMES } from "./page/theme";
 import { WIDGET_API } from "./page/widget-api";
@@ -96,10 +104,12 @@ interface WriteResultBase {
   missingProfileLanguage?: string;
   /** The custom widgets that have no texts in some languages of the page, with those languages. */
   missingWidgetTexts?: Record<string, string[]>;
+  /** The preset widgets that this write gave to edited boards and that the page shows, board -> widget ids. */
+  addedWidgets?: Record<string, string[]>;
 }
 
 /**
- * created: no page before; updated: only the data changed; replaced: a new page or new settings;
+ * created: no page before; updated: the data changed (and new preset widgets, if any); replaced: a new page or new settings;
  * upgraded: the page code differs from the template, and the result names the server versions.
  */
 export type WriteResult = WriteResultBase &
@@ -191,6 +201,42 @@ export function writeBlock(page: string, block: Block, value: unknown): string {
     marker(block),
     () => `/* garmin-${block}:start */${json}/* garmin-${block}:end */`,
   );
+}
+
+/**
+ * Gives each edited board of a page from the template the preset widgets that it has not met, and
+ * saves the record. The rev stays. A layout block that cannot be read leaves the page as it is: it
+ * must never stop a data update.
+ */
+function withNewPresetWidgets(
+  page: string,
+  settings: Settings,
+  tabs: ReadonlySet<string>,
+): { page: string; added: Record<string, string[]> } {
+  let layout: ReturnType<typeof parseLayout>;
+  try {
+    const saved = readBlock(page, "layout");
+    if (saved === undefined || saved === null) return { page, added: {} };
+    layout = parseLayout(saved);
+  } catch {
+    // an unreadable layout block is the user's to fix with editDashboard; the data update goes on
+    return { page, added: {} };
+  }
+  const merged = withPresetWidgets(layout, preset, baseline);
+  if (!merged.changed) return { page, added: {} };
+  // the page keeps a widget that it withholds, but the user is told only of the ones it shows, on the boards it shows
+  const shown = new Set(CATALOGUE.filter((c) => inPage(c, settings)).map((c) => c.id));
+  const added = Object.fromEntries(
+    Object.entries(merged.added).flatMap(([board, list]) => {
+      if (!tabs.has(board)) return [];
+      const ids = list.filter((id) => {
+        const widget = merged.layout.boards[board]?.find((i) => i.id === id)?.widget;
+        return widget !== undefined && shown.has(widget);
+      });
+      return ids.length > 0 ? [[board, ids]] : [];
+    }),
+  );
+  return { page: writeBlock(page, "layout", merged.layout), added };
 }
 
 /** A new layout rev: a browser edit made on another layout never applies to this one. */
@@ -603,13 +649,22 @@ export class DashboardWriter {
         "Settings need a page from the template; this page has no garmin-settings block",
       );
     }
+    const raw = JSON.parse(await this.#data(weeks ?? weeksOf(old), own.workouts === true)) as Json;
+    let addedWidgets: Record<string, string[]> = {};
+    // only a page from the template has a layout block that the server owns
+    if (page === undefined && pageCode(next).from === "template") {
+      ({ page: next, added: addedWidgets } = withNewPresetWidgets(
+        next,
+        own,
+        new Set(tabsFor(listOf(raw.activities) as Activity[], own)),
+      ));
+    }
     if (page === undefined && next !== old) next = styled(next, own);
     // a page that Claude wrote keeps its settings in its block too, so its updates filter the same way
     if (page !== undefined && marker("settings").test(next)) {
       next = writeBlock(next, "settings", Object.keys(own).length > 0 ? own : null);
     }
     if (page === undefined) next = await this.#withLibrary(next, old);
-    const raw = JSON.parse(await this.#data(weeks ?? weeksOf(old), own.workouts === true)) as Json;
     next = withData(next, raw, own, notes, await this.schedule.due(target));
 
     // another process (a scheduled refresh, a second client) can write the page while this one waits for Garmin
@@ -637,6 +692,7 @@ export class DashboardWriter {
       path: target,
       ...(kind === "upgraded" ? { page: kind, previousServer, server: version } : { page: kind }),
       ...(backup ? { backup } : {}),
+      ...(Object.keys(addedWidgets).length > 0 ? { addedWidgets } : {}),
       notes: own.exclude?.includes("notes") ? 0 : notes.length,
       digest: digest(filterData(raw, own)),
       pageLanguages: pageLanguages(next, own),
@@ -716,6 +772,7 @@ export class DashboardWriter {
             layout,
             board,
             list.filter((i) => i.widget !== id),
+            preset,
           );
           layoutChanged = true;
         }
@@ -734,6 +791,7 @@ export class DashboardWriter {
         layout,
         p.board,
         add(board, p.widget, { type: p.type, span: spanOf(p.span) }),
+        preset,
       );
       layoutChanged = true;
     }
@@ -1042,10 +1100,12 @@ export function registerDashboardWriter(server: McpServer, writer: DashboardWrit
         "best efforts, races, long runs, race predictions, strength top sets, readiness, fitness and form,",
         "HRV, recovery, fitness age, sync) for the coach notes. Without HRV and sleep data the digest has",
         "no readiness: give the verdict as n/a.",
-        "An existing page keeps all its code, layout and widgets: only its data is replaced. A page with",
+        "An existing page keeps all its code, layout and widgets: its data is replaced. A page with",
         'different page code gets the page code of the server and keeps its layout and widgets; the result then has `page: "upgraded"`,',
         "`previousServer` (the server version that wrote the page, n/a when unknown) and `server`. Every page from the template",
         "also gets the custom widgets of the widget library (<data-dir>/widgets.json), not placed on a board.",
+        "On a page from the template, an edited board also gets the widgets that a release adds to its preset, one time;",
+        "the result lists the ones that the page shows in `addedWidgets` (board -> widget ids).",
         "`layout` writes a new page",
         "from the template: `preset` (the default widgets) or `blank` (empty boards). It keeps the languages",
         "added with editDashboard `languages`. `page` writes your own",
@@ -1155,7 +1215,7 @@ export function registerDashboardWriter(server: McpServer, writer: DashboardWrit
         layout: z
           .record(z.string(), z.unknown())
           .describe(
-            "A whole layout: { base, boards: { all: [{ id, widget, type?, span, hidden? }] } }",
+            "A whole layout: { base, boards: { all: [{ id, widget, type?, span, hidden? }] }, seen?: { all: [widget names] } }. `seen` is the record of the preset widgets that each board has met: give it back as you got it.",
           )
           .optional(),
         place: z

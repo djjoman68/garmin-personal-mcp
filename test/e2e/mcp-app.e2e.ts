@@ -6,6 +6,7 @@ import { build } from "tsdown";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { DashboardWriter, type ViewBlocks } from "../../src/dashboard-page";
 import { data, launch } from "./page";
+import { preset } from "../../src/page/presets";
 
 let browser: Browser;
 let host: string;
@@ -113,4 +114,24 @@ it("asks the host for full screen and back, when the host offers it", async () =
   await frame.waitForSelector("button.screen-mode[aria-label='Full screen']");
   expect(await page.evaluate(() => window.hostLog.modes)).toEqual(["fullscreen", "inline"]);
   expect(errors).toEqual([]);
+});
+
+it("shows a preset widget that an edited board has not met, in the chat view", async () => {
+  const blocks = {
+    ...(await viewBlocks()),
+    layout: {
+      rev: "c",
+      base: "preset",
+      // a record without coachNotes: that widget is the new one
+      seen: {
+        all: preset("all")
+          .map((i) => i.widget)
+          .filter((w) => w !== "coachNotes"),
+      },
+      boards: { all: ["kpis", "activities"].map((id) => ({ id, widget: id, span: 3 })) },
+    },
+  };
+  const { frame, errors } = await showInHost(template(), blocks);
+  expect(await frame.$("[data-id=coachNotes]")).not.toBeNull();
+  expect(errors.filter((e) => e.startsWith("pageerror"))).toEqual([]);
 });

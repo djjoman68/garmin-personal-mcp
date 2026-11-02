@@ -3,16 +3,7 @@ import * as metrics from "./metrics";
 import * as running from "./running";
 import * as strength from "./strength";
 import * as sports from "./sports";
-import {
-  type Activity,
-  activitiesIn,
-  boardOrder,
-  GROUPS,
-  groupOf,
-  isLate,
-  named,
-  weeksOf,
-} from "./calc";
+import { type Activity, activitiesIn, GROUPS, groupOf, isLate, named, weeksOf } from "./calc";
 import { Chart, chart, destroyCharts, themeCharts } from "./charts";
 import { announce, h, keepFocus } from "./dom";
 import { dragTile, keyMove, resizeTile } from "./edit-drag";
@@ -47,8 +38,9 @@ import {
   storedSpan,
   toggleHidden,
   withBoard,
+  withPresetWidgets,
 } from "./layout";
-import { preset } from "./presets";
+import { baseline, preset } from "./presets";
 import {
   allWidgets,
   type Ctx,
@@ -85,7 +77,6 @@ declare global {
 const plain = (s: string) =>
   new DOMParser().parseFromString(s, "text/html").documentElement.textContent ?? "";
 const LAYOUT_KEY = `garmin-layout:${location.pathname}`;
-const ALWAYS: readonly string[] = ["running", "strengthTraining", "walking", "cycling", "racket"];
 
 // read in start(): in the chat (an MCP App) the blocks arrive after the script runs
 let G: NonNullable<Window["GARMIN"]>;
@@ -114,8 +105,11 @@ export function start(): void {
   S = window.GARMIN_SETTINGS ?? {};
   langChoice = store.get("garmin-lang") ?? S.language ?? "auto";
   pageLayout = parseLayout(G.layout);
-  layout = merge(pageLayout, readLocal());
-  mine = stale(pageLayout, readLocal());
+  const local = readLocal();
+  // runs on load and saves nothing: the merge repeats the same way, and Done saves it with its record
+  layout = withPresetWidgets(merge(pageLayout, local), preset, baseline).layout;
+  const old = stale(pageLayout, local);
+  mine = old && withPresetWidgets(old, preset, baseline).layout;
   screen.redraw = render;
   window.Chart = Chart; // for custom widgets and the page tests
   addLanguages(G.languages);
@@ -137,15 +131,7 @@ export function start(): void {
   );
   const data = G.data;
   if (data) {
-    const present = new Set(data.activities.map(groupOf));
-    const kept = S.sports;
-    tabs = [
-      "all",
-      ...(S.exclude?.includes("recovery") ? [] : ["recovery"]),
-      ...boardOrder(present).filter((g) =>
-        kept ? kept.includes(g) : ALWAYS.includes(g) || present.has(g),
-      ),
-    ];
+    tabs = calc.tabsFor(data.activities, S);
     weeks = weeksOf(data.start, data.end);
   }
   view = parseHash(location.hash, tabs, weeks);
@@ -914,7 +900,7 @@ function currentBoard(): Instance[] {
 
 /** An edit changes the draft only; Done saves it. */
 function saveBoard(board: Instance[]): void {
-  setDraft(withBoard(draft ?? layout, view.tab, board));
+  setDraft(withBoard(draft ?? layout, view.tab, board, preset));
 }
 
 function setDraft(next: Layout): void {
@@ -1200,7 +1186,7 @@ const findText = (...titles: string[]) =>
 
 function copyDialog(): void {
   const shown = draft ?? layout;
-  const text = JSON.stringify({ base: shown.base, boards: shown.boards });
+  const text = JSON.stringify({ base: shown.base, boards: shown.boards, seen: shown.seen });
   const area = h("textarea", { class: "layout-text", readonly: true, rows: 6 }, text);
   const copy = h("button", { class: "btn" }, t("copy.copy"));
   copy.addEventListener("click", async () => {

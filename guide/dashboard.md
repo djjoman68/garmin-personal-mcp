@@ -56,9 +56,15 @@ to its release notes. Give this version when you report a problem.
 
 ## Update the dashboard
 
-Run the `training-dashboard-update` prompt. The server replaces only the data and the coach notes.
-Your layout, your custom widgets, your languages and your page settings stay. Leave `weeks` empty to keep the weeks of
+Run the `training-dashboard-update` prompt. The server replaces the data and the coach notes.
+Your layout, your custom widgets, your languages and your page settings stay. The layout changes only when
+a release adds a preset widget to a board that you edited (see below). Leave `weeks` empty to keep the weeks of
 the page.
+
+When a release adds a widget to the preset of a board that you edited, the update also puts that widget
+on the board, one time, and saves in the page which preset widgets each board has met. A widget that
+you remove later stays removed. The assistant tells you which widgets the update added to which board.
+The scheduled refresh does the same, without the message.
 
 When the server has other page code than your page, the update writes the page code of the server.
 This also happens with an older server, and in a scheduled refresh. It keeps your layout, custom widgets, languages and page settings, and it keeps the old page as a
@@ -379,13 +385,15 @@ Settings need a page from the template, or a page that the assistant designed (`
 ## How the page keeps your changes
 
 The page keeps its state in blocks of the file. The blocks hold the data, the layout, the custom
-widgets, the languages that you add and the [page settings](#page-settings). An update replaces only
-the data block and the block of the built-in languages. It also adds the widgets of your widget
+widgets, the languages that you add and the [page settings](#page-settings). An update replaces
+the data block and the block of the built-in languages. It changes the layout block only to add a new
+preset widget to a board that you edited. It also adds the widgets of your widget
 library (`widgets.json` in the data folder).
 
 The browser saves the layout when you select **Done**, but only in that browser. To keep the layout
 in the page, select **Copy layout** and give the text to your assistant. The assistant saves it with
-`editDashboard`. When the assistant saves a layout, the page shows the new layout and asks which one
+`editDashboard`. The copied layout also has the record of the preset widgets that each board has
+met. The page uses this record to add new preset widgets one time. When the assistant saves a layout, the page shows the new layout and asks which one
 to use. **Keep mine** goes back to the layout of the browser. **Use the new one** deletes the layout
 from the browser.
 

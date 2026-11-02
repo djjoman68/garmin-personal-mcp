@@ -1,7 +1,8 @@
 import type { Instance, Span } from "./layout";
 
 /** The preset widgets of each board, in order, with their width in columns. */
-const PRESETS: Record<string, [widget: string, span: Span][]> = {
+type Row = [widget: string, span: Span][];
+const PRESETS: Record<string, Row> & { generic: Row } = {
   all: [
     ["kpis", 3],
     ["readiness", 2],
@@ -96,9 +97,82 @@ const PRESETS: Record<string, [widget: string, span: Span][]> = {
   ],
 };
 
+/**
+ * The preset widgets of a page from before the `seen` record: the widgets that every such board
+ * has met. Frozen on purpose; never add a widget here when a release adds one to a preset.
+ */
+const BASELINE: Record<string, string[]> & { generic: string[] } = {
+  all: [
+    "kpis",
+    "readiness",
+    "calendar",
+    "periodComparison",
+    "records",
+    "weeklyVolume",
+    "intensityMinutes",
+    "loadSafety",
+    "fitnessFatigue",
+    "loadVsRecovery",
+    "activities",
+    "coachNotes",
+  ],
+  recovery: [
+    "readiness",
+    "fitnessAge",
+    "loadVsRecovery",
+    "hrv",
+    "restingHr",
+    "sleep",
+    "sleepNeed",
+    "bedtime",
+    "bodyBattery",
+  ],
+  running: [
+    "typeKpis",
+    "typeWeekly",
+    "hrZones",
+    "bestEfforts",
+    "races",
+    "aerobicFitness",
+    "intensityShare",
+    "runningForm",
+    "runWalk",
+    "trainingEffect",
+    "racePredictor",
+    "longRuns",
+    "workoutTrend",
+    "activities",
+  ],
+  strengthTraining: [
+    "typeKpis",
+    "typeWeekly",
+    "hrZones",
+    "setsPerCategory",
+    "muscleBalance",
+    "exercises",
+    "strengthSessions",
+  ],
+  walking: ["typeKpis", "typeWeekly", "hrZones", "walkDetails", "steps", "activities"],
+  hiking: ["typeKpis", "typeWeekly", "hrZones", "hikeVertical", "activities"],
+  cycling: ["typeKpis", "typeWeekly", "hrZones", "bikeDetails", "activities"],
+  swimming: ["typeKpis", "typeWeekly", "hrZones", "swimDetails", "activities"],
+  racket: ["typeKpis", "typeWeekly", "hrZones", "racketDetails", "activities"],
+  generic: ["typeKpis", "typeWeekly", "hrZones", "activities"],
+};
+
+export const PRESET_BOARDS: readonly string[] = Object.keys(PRESETS);
+
+/** A board name is user data (`constructor`, `__proto__`): only an own key picks a list. */
+const pick = <T>(table: Record<string, T> & { generic: T }, board: string): T =>
+  Object.entries(table).find(([name]) => name === board)?.[1] ?? table.generic;
+
+export function baseline(board: string): string[] {
+  return pick(BASELINE, board);
+}
+
 export function preset(board: string): Instance[] {
   // any other SDK sport has the widgets of the Other board
-  return (PRESETS[board] ?? PRESETS.generic).map(([widget, span]) => ({
+  return pick(PRESETS, board).map(([widget, span]) => ({
     id: widget,
     widget,
     span,
