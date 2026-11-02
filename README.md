@@ -11,6 +11,8 @@
 </p>
 
 <p align="center">
+  <a href="https://mcpservers.org/servers/indaco/garmin-personal-mcp"><img src="https://mcpservers.org/badge.svg" alt="Listed on mcpservers.org" /></a>
+  <a href="https://glama.ai/mcp/servers/indaco/garmin-personal-mcp"><img src="https://glama.ai/mcp/servers/indaco/garmin-personal-mcp/badges/score.svg" alt="Garmin Personal MCP MCP server – quality and maintenance score on Glama" /></a>
   <a href="https://www.npmjs.com/package/@indaco/garmin-personal-mcp"><img src="https://img.shields.io/npm/v/@indaco/garmin-personal-mcp.svg" alt="npm version" /></a>
   <a href="https://codecov.io/gh/indaco/garmin-personal-mcp"><img src="https://codecov.io/gh/indaco/garmin-personal-mcp/branch/main/graph/badge.svg" alt="Code coverage" /></a>
   <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg" alt="Node.js 22 or later" /></a>
