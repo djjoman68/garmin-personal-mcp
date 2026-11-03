@@ -13,14 +13,17 @@ Then answer in chat, in this order, short:
 
 - **Summary**: date, name, distance, time, pace, average HR, and the training effect with its label.
 - **Plan against execution**: when the run followed a planned workout, a table with one row per
-  step: the target (pace, HR or cadence, low to high), what the matching lap did, and hit or miss.
-  Match the steps to the laps in order, without the laps under 20 m or under 8 s: the watch adds
-  them between steps. Without a planned workout, say so in one line.
+  lap that has a `step`: the step, its target (pace, HR or cadence, low to high), what the lap did,
+  and hit or miss. A lap's `step` is the `stepIndex` of its plan step. Match by it, not in order:
+  auto-lap splits a long step into several laps, and each rep of a repeat is its own lap with the
+  same `step`. For a step with an OPEN target, show its planned time or distance (open when it ends
+  with the lap button) and what the lap did, with no hit or miss. Leave out the laps without a
+  `step`. Without a planned workout, say so in one line.
 - **Reps**: for intervals, each active lap of 20 m and 8 s or more, with its pace, HR and running
   form (ground contact `gctMs`, vertical ratio `vertRatioPct`, when the laps have them). A shorter
-  lap is a lap that the watch adds between steps. Also the fade of each step from `work.fade`: `pct`
-  is the last rep against the first, in %. When `pct` is null, the reps are not alike: write "n/a".
-  Skip this part for a steady run.
+  lap is not a rep: for example an open step of the workout that ends when you press lap. Also the
+  fade of each step from `work.fade`: `pct` is the last rep against the first, in %. When `pct` is
+  null, the reps are not alike: write "n/a". Skip this part for a steady run.
 - **HR drift**: for a steady run, `split.hrDriftPct`: the drop in distance per heartbeat from the
   first half to the second, in %. 5% or less shows a solid aerobic base. When it is null, a lap has
   no heart rate: write "n/a". When `split` is null, the run has fewer than 2 laps: write "n/a" too.

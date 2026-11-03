@@ -396,12 +396,22 @@ describe("laps", () => {
 
   it("gives the workout step of a lap, so the reps of one drill stay together", () => {
     const fit = decodeFit(
-      fitFile([Profile.MesgNum.LAP, { totalTimerTime: 30, intensity: "active", wktStepIndex: 2 }]),
+      fitFile(
+        [Profile.MesgNum.LAP, { totalTimerTime: 30, intensity: "warmup", wktStepIndex: 0 }],
+        [Profile.MesgNum.LAP, { totalTimerTime: 30, intensity: "active", wktStepIndex: 2 }],
+        [Profile.MesgNum.LAP, { totalTimerTime: 5, intensity: "cooldown" }],
+      ),
       12,
     );
-    expect(lapsOf(fit, 12).laps).toEqual([
-      { lap: 1, km: 0, time: "0:30", intensity: "active", step: 2 },
+    const laps = lapsOf(fit, 12).laps;
+    expect(laps).toEqual([
+      // step 0 is a real step (the warm-up), not a missing one
+      { lap: 1, km: 0, time: "0:30", intensity: "warmup", step: 0 },
+      { lap: 2, km: 0, time: "0:30", intensity: "active", step: 2 },
+      { lap: 3, km: 0, time: "0:05", intensity: "cooldown" },
     ]);
+    // the lap that ends the session has no step at all, not an undefined one
+    expect(laps[2]).not.toHaveProperty("step");
   });
 
   it("gives the running form of a lap: ground contact, vertical ratio and oscillation, stride", () => {
@@ -472,7 +482,7 @@ describe("run numbers of the laps", () => {
       lap(1, "6:00", "6:00/km", 130, "warmup"),
       lap(0.4, "1:36", "4:00/km", 170, "active", 2),
       lap(0.4, "1:38", "4:05/km", 172, "active", 2),
-      // the watch adds a lap of a few metres between steps: not a rep
+      // an open step that ends when you press lap gives a lap of a few metres: not a rep
       lap(0.01, "0:04", undefined, 150, "active", 3),
       lap(0.4, "1:40", "4:10/km", 175, "active", 2),
       lap(1, "4:30", "4:30/km", 168, "active", 4),
